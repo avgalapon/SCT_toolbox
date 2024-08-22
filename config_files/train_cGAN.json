@@ -1,0 +1,22 @@
+{
+    "data_path": "/data/galaponav/dataset/newHN_full_train",
+    "output_path": "/data/galaponav/output/newHN_CBCT/cGAN",
+    "temp_preprocessed_path": "/data/galaponav/dataset/preprocessed/cGAN2",
+    "weights_path": "/data/galaponav/output/newHN_CBCT/cGAN/weights_new",
+    "fname": "",
+    "img_type": "CBCT",
+    "X": "CBCT_registered_DIR_cropped_masked_fixed.nrrd",
+    "Y": "rCT_resampled_cropped_masked_fixed.nrrd",
+    "VOI": "mask_cbct_corrected_fixed.nrrd",
+    "orientation": "axial",
+    "model_type": "cGAN",
+    "dropout_enable": true,
+    "dropout_rate": 0.1,
+    "device": 0,
+    "DIR": true,
+    "EVAL": true,
+    "epoch": 200,
+    "decay_epoch":100,
+    "learning_rate": 0.0001,
+    "lambda_decay": 0.0004
+}
