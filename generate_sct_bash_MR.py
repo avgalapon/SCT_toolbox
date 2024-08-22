@@ -17,15 +17,16 @@ import SimpleITK as sitk
 from utils import modify_json
 from evaluation_class import Evaluate_sCT
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
-json_path = fr"/home/galaponav/art/scripts/PhD/SCT_toolbox/tp_testMR.json"
+json_path = fr"{current_dir}/config_files/tp_testMR.json"
 datapath = fr'/data/galaponav/dataset/newHN_MR_test'
 
 model_list = ['DCNN'] # run for DCNN after for FX and FT
 patient_list = sorted(os.listdir(datapath))[:1]
 print(patient_list)
-list_suffix = ['_single_noEval'] #, '_dropout_noEval', '_single_Eval', '_dropout_Eval', '_single_DIR', '_dropout_DIR'
-# list_suffix = ['_single_noEval']
+list_suffix = ['_single_noEval']
+
 
 for patient in patient_list:
     exception_list = []
@@ -66,7 +67,7 @@ for patient in patient_list:
             modify_json(json_path, 'fname', fname)
             modify_json(json_path, 'model_type', model)
             
-            cmd = f"python /home/galaponav/art/scripts/PhD/SCT_toolbox/CTsynthesizerv2.py {json_path}"
+            cmd = f"python /home/galaponav/art/scripts/PhD/SCT_toolbox/CTsynthesizer.py {json_path}"
             os.system(cmd)
             print(f"{patient} sCT generated")
         

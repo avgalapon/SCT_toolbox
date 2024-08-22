@@ -8,17 +8,16 @@
 @License :   (C)Copyright 2022-2023, Arthur Galapon
 @Desc    :   DCNN sCT gen with dropout
 '''
-
 import os
 import time
 import shutil
 import logging
 import argparse
-import model_class
 import numpy as np
 import SimpleITK as sitk
 import concurrent.futures
 from config_class import Config
+import model_class
 import preprocessor as Preprocess
 from synthesis_class import Generate_sCT
 from evaluation_class import Evaluate_sCT
@@ -27,19 +26,17 @@ from utils import return_to_HU_cycleGAN, return_to_HU_cGAN
 
 # Set up logging
 logging.basicConfig(
-    filename='test_dropout.log',  # Log file
-    level=logging.INFO,           # Log level
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
+    filename='test_dropout.log', 
+    level=logging.INFO, 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 def run_inference(cfg, num_inf):
     try:
-        # Initialize model and dataloader
         prepare_data = prepare_data_class.prepare_dataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd') 
         model, device = model_class.Model(cfg).initialize_models()
         dataloader = prepare_data.create_dataset()
-
         sct_gen = Generate_sCT(cfg, model, dataloader, device)
         logger.info(f"Iteration #: {num_inf+1}")
         return sct_gen.inference_loop()
@@ -51,17 +48,14 @@ def save_generated_sct(cfg, predictions):
     try:
         logger.info("Stacking slices for sCT generation...")
         sct_stack = np.stack(predictions)
-        sct_mean = np.mean(sct_stack, axis=0)
-        sct_variance = np.var(sct_stack, axis=0)
+        sct_mean, sct_variance = np.mean(sct_stack, axis=0), np.var(sct_stack, axis=0)
         reference_input = sitk.ReadImage(os.path.join(cfg.output_path, cfg.X))
         mask = sitk.ReadImage(os.path.join(cfg.output_path, cfg.VOI))
 
-        sct_img = np.squeeze(sct_mean)
-        unc_img = np.squeeze(sct_variance)
+        sct_img, unc_img = np.squeeze(sct_mean), np.squeeze(sct_variance)
 
         if cfg.img_type == 'MRI':
-            sct_img = revert_image(sct_img, reference_input)
-            unc_img = revert_image(unc_img, reference_input)
+            sct_img, unc_img = revert_image(sct_img, reference_input), revert_image(unc_img, reference_input)
 
         logger.info('Updating image properties...')
         sct_img.CopyInformation(reference_input)
@@ -70,7 +64,6 @@ def save_generated_sct(cfg, predictions):
         sct_img = sitk.Mask(sct_img, mask, -1000, 0)
         unc_img = sitk.Mask(unc_img, mask, 0, 0)
 
-        # Denormalizing sCT
         sct_img = unnorm_sct(cfg, sct_img)
         unc_img = unnorm_sct(cfg, unc_img)
 
@@ -90,13 +83,10 @@ def save_generated_sct(cfg, predictions):
 
 def revert_image(img, img_ref):
     try:
-        img_ref = sitk.GetArrayFromImage(img_ref)
-        original_shape = img_ref.shape
-        max_image_shape = 512
-        offsets = (int(np.floor(max_image_shape - original_shape[0]) / 2.0), 
-                   int(np.floor(max_image_shape - original_shape[1]) / 2.0), 
-                   int(np.floor(max_image_shape - original_shape[2]) / 2.0))
-        original_img = img[:, offsets[1]:offsets[1] + original_shape[1], offsets[2]:offsets[2] + original_shape[2]]    
+        img_ref_arr = sitk.GetArrayFromImage(img_ref)
+        original_shape = img_ref_arr.shape
+        offsets = [(512 - dim) // 2 for dim in original_shape]
+        original_img = img[:, offsets[1]:offsets[1] + original_shape[1], offsets[2]:offsets[2] + original_shape[2]]
         return sitk.GetImageFromArray(original_img.astype(np.float32))
     except Exception as e:
         logger.error(f"Error in reverting image: {e}")
@@ -116,14 +106,14 @@ def unnorm_sct(cfg, sct_arr):
 def save_data_uncertainty(cfg, uncertainty):
     try:
         logger.info("Stacking slices for uncertainty...")
-        variance = [u**2 for u in uncertainty]
-        combined_var = np.mean(variance, axis=0)
-        combined_std = np.sqrt(combined_var)
+        variance = np.mean([u**2 for u in uncertainty], axis=0)
+        combined_std = np.sqrt(variance)
 
         unc_img = sitk.GetImageFromArray(np.squeeze(combined_std))
         reference_cbct = sitk.ReadImage(os.path.join(cfg.output_path, cfg.X))
         unc_img.CopyInformation(reference_cbct)
         unc_img = unnorm_sct(cfg, unc_img)
+
         unc_fname = os.path.join(cfg.output_path, f'aleatoric_{cfg.model_type}_{cfg.fname}.nrrd')
         sitk.WriteImage(unc_img, unc_fname, True)
         logger.info(f"File saved: {unc_fname}")
@@ -142,29 +132,20 @@ def main():
     try:
         cfg = Config(args.json_parameters_path)
 
-        # Prepare and preprocess data
-        time_start_prep = time.time()
-        
-        prepare_data = prepare_data_class.prepare_dataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd') 
+        prepare_data = prepare_data_class.prepare_dataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd')
         prepare_data.run_sitk(1, 1, DIR=cfg.DIR, eval=cfg.EVAL)
-        
-        time_end_prep = time.time()
-        time_elapsed_prep = time_end_prep - time_start_prep
-        
+
         Preprocess.Preprocessor(cfg).preprocess()
-        
-        # Save to text file
-        time_text_prep = os.path.join(os.path.dirname(__file__), 'elapsed_time_prep.txt')
-        with open(time_text_prep, 'a') as file:
-            file.write(f"{cfg.fname} : {str(time_elapsed_prep)}\n")
+
+        with open(os.path.join(os.path.dirname(__file__), 'elapsed_time_prep.txt'), 'a') as file:
+            file.write(f"{cfg.fname} : {time.time() - time_start}\n")
 
         model, device = model_class.Model(cfg).initialize_models()
         num_inference = model_class.Model(cfg).enable_dropout(model)
 
-        # Synthesize sCT using multiprocessing
         time_synthesis_start = time.time()
-        predictions = []
-        uncertainties = []
+        predictions, uncertainties = [], []
+
         with concurrent.futures.ProcessPoolExecutor() as executor:
             futures = [executor.submit(run_inference, cfg, num_inf) for num_inf in range(num_inference)]
             for future in concurrent.futures.as_completed(futures):
@@ -175,23 +156,15 @@ def main():
         save_generated_sct(cfg, predictions)
         if cfg.model_type == 'cGAN':
             save_data_uncertainty(cfg, uncertainties)
-        time_synthesis_end = time.time()
 
-        if os.path.isdir(cfg.temp_preprocessed_path):
-            shutil.rmtree(cfg.temp_preprocessed_path)
+        shutil.rmtree(cfg.temp_preprocessed_path, ignore_errors=True)
 
-        time_end = time.time()
-        elapsed_time = time_end - time_start
-        synthesis_time = time_synthesis_end - time_synthesis_start
-        logger.info(f'sCT generation completed! Time elapsed: {elapsed_time} seconds and synthesis time: {synthesis_time} seconds')
+        logger.info(f'sCT generation completed! Total time: {time.time() - time_start} seconds, synthesis time: {time.time() - time_synthesis_start} seconds')
 
-        time_text = os.path.join(os.path.dirname(__file__), 'elapsed_time.txt')
-        # Open the file in append mode and write the elapsed time
-        with open(time_text, 'a') as file:
-            file.write(f"{cfg.fname} : {str(elapsed_time)} : {str(synthesis_time)}\n")
+        with open(os.path.join(os.path.dirname(__file__), 'elapsed_time.txt'), 'a') as file:
+            file.write(f"{cfg.fname} : {time.time() - time_start} : {time.time() - time_synthesis_start}\n")
 
         if cfg.EVAL:
-            # Evaluate sCT
             EvaluateIQ = Evaluate_sCT(cfg)
             EvaluateIQ.run_IQeval(250)
     except Exception as e:
