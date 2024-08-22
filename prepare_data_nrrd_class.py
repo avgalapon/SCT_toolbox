@@ -72,15 +72,15 @@ class PrepareDataset:
         print('Total Val slices:', len(val_dataloader))
         return train_dataloader, val_dataloader
     
-    def create_train_dataset(self):
-        normalize = (self.config.model_type != 'DCNN')
-        train_dataset = ImageDataset_train(self.config, train_data=True, normalize=normalize, augmentation=True)
-        val_dataset = ImageDataset_train(self.config, train_data=False, normalize=normalize, augmentation=False)
-        train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, pin_memory=True,num_workers=0)
-        val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True, pin_memory=True,num_workers=0)
-        print('Total Train slices: ',len(train_dataloader))
-        print('Total Val slices: ',len(val_dataloader))
-        return train_dataloader, val_dataloader
+    # def create_train_dataset(self):
+    #     normalize = (self.config.model_type != 'DCNN')
+    #     train_dataset = ImageDataset_train(self.config, train_data=True, normalize=normalize, augmentation=True)
+    #     val_dataset = ImageDataset_train(self.config, train_data=False, normalize=normalize, augmentation=False)
+    #     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, pin_memory=True,num_workers=0)
+    #     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True, pin_memory=True,num_workers=0)
+    #     print('Total Train slices: ',len(train_dataloader))
+    #     print('Total Val slices: ',len(val_dataloader))
+    #     return train_dataloader, val_dataloader
 
     def remove_tb_slices(self, numslice_top, numslice_bottom, img_type='CBCT'):
         img_path = os.path.join(self.config.output_path, f'{img_type}.nrrd')

@@ -135,7 +135,7 @@ class ImageDataset_train(Dataset):
             normMR = slice
         else:
             # normMR = 2* ((slice-self.MR_min)/(self.MR_max-self.MR_min)) - 1
-            normCT = (slice - self.CT_min) / (self.CT_max - self.CT_min)
+            normMR = (slice - self.MR_min) / (self.MR_max - self.MR_min)
         return normMR
     
     def augment_image(self, img, augmentation_type, augmentation_magnitude, img_type):

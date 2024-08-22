@@ -19,7 +19,9 @@ import model_class
 import losses
 import train_class
 
-json_path = fr"/home/galaponav/art/scripts/PhD/SCT_toolbox/train_cGAN.json"
+current_dir = os.path.dirname(os.path.abspath(__file__))
+
+json_path = fr"{current_dir}/config_files/train_cGAN.json"
 config = Config(json_path)
 
 patient_list = sorted(os.listdir(config.data_path))
@@ -35,7 +37,7 @@ prep.preprocess_train(train_data, train_data=True)
 prep.preprocess_train(val_data, train_data=False)
 
 print("Loading dataset to dataloader")
-prepare_data = prepare_data_nrrd_class.prepare_dataset(config)
+prepare_data = prepare_data_nrrd_class.PrepareDataset(config)
 train_dataloader, valid_dataloader = prepare_data.create_train_dataset()
 
 model, device = model_class.Model(config).intialize_training_models()

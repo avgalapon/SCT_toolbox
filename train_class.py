@@ -61,7 +61,7 @@ class Train:
             optimizer.zero_grad()
             fake_Y = model(real_X)
             loss = loss_fn(real_Y, fake_Y)
-            loss += self.compute_l1_norm(model, 0.001)
+            loss += self.compute_l1_norm(model, 0.0001)
             loss.backward()
             optimizer.step()
 
@@ -203,10 +203,10 @@ class Train:
         model_G, model_D = self.model['cGAN_G'], self.model['cGAN_D']
         loss_laplacian, loss_cGAN, loss_MAE = self.loss
 
-        optimizer_G = torch.optim.Adam(model_G.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
-        optimizer_D = torch.optim.Adam(model_D.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
-        lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=DecayLR(self.epoch, 0, self.decay_epoch).step)
-        lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=DecayLR(self.epoch, 0, self.decay_epoch).step)
+        optimizer_G = torch.optim.Adam(model_G.parameters(), lr=self.config.learning_rate, betas=(0.5, 0.999))
+        optimizer_D = torch.optim.Adam(model_D.parameters(), lr=self.config.learning_rate, betas=(0.5, 0.999))
+        lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
+        lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
 
         train_loss, val_loss = {}, {}
         best_loss = np.inf
@@ -228,7 +228,8 @@ class Train:
         plot_count = 0
         max_plots = 20
 
-        for data in tqdm(self.train_dataloader, desc="Training"):
+        pbar = tqdm(self.train_dataloader, desc="Training")
+        for data in pbar:
             real_X, real_Y = data['A'].to(self.device), data['B'].to(self.device)
             fake_Y, std_Y = model_G(real_X)
 
@@ -244,12 +245,17 @@ class Train:
 
             loss_G.append(total_loss_G.item())
             loss_D.append(lossD.item())
-            
+                
             if self.plot and plot_count < max_plots and random.random() < 0.3:
                 plot_count += 1
                 self.plot_images(real_X, real_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_training_{plot_count}.png")
+            
+            running_mean_G = np.mean(loss_G)
+            running_mean_D = np.mean(loss_D)
+            
+            pbar.set_description(f"Training Loss G: {running_mean_G} | Training Loss D: {running_mean_D}")
 
-        return [np.mean(loss_G), np.mean(loss_D)]
+        return [running_mean_G, running_mean_D]
     
     def validate_cGAN(self, model_G, loss_MAE, epoch):
         model_G.eval()
@@ -258,7 +264,8 @@ class Train:
         with torch.no_grad():
             plot_count = 0
             max_plots = 20
-            for data in tqdm(self.valid_dataloader, desc="Validation"):
+            pbar = tqdm(self.train_dataloader, desc="Validation")
+            for data in pbar:
                 val_X, val_Y = data['A'].to(self.device), data['B'].to(self.device)
                 fake_Y, _ = model_G(val_X)
                 loss = loss_MAE(val_Y, fake_Y)
@@ -267,8 +274,11 @@ class Train:
                 if self.plot and plot_count < max_plots and random.random() < 0.3:
                     plot_count += 1
                     self.plot_images(val_X, val_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_validation_{plot_count}.png")
+                    
+                running_mean = np.mean(losses)
+                pbar.set_description(f"Validation Loss: {running_mean}")
 
-        return np.mean(losses)
+        return running_mean
 
     def save_best_model_cGAN(self, model_G, model_D, epoch, current_loss, best_loss):
         if current_loss < best_loss and epoch > 1:
@@ -320,15 +330,27 @@ class Train:
         fig, ax = plt.subplots(1, 4, figsize=(15, 5))
         diff = np.abs(real_Y - fake_Y)
         
-        im0 = ax[0].imshow(real_X[0, 0, :, :], cmap='gray')
+        if self.config.model_type == 'DCNN':
+            if self.config.img_type != 'MR':
+                vlim_in = [0,1024]
+                vlim_GT = [-1024,1024]
+            else:
+                vlim_in = [0,1]
+                vlim_GT = [0,1]
+                
+        else:
+            vlim_in = [0,1]
+            vlim_GT = [0,1]
+        
+        im0 = ax[0].imshow(real_X[0, 0, :, :], cmap='gray', clim=vlim_in)
         ax[0].set_title('Real X')
         ax[0].axis('off')
         
-        im1 = ax[1].imshow(real_Y[0, 0, :, :], cmap='gray')
+        im1 = ax[1].imshow(real_Y[0, 0, :, :], cmap='gray', clim=vlim_GT)
         ax[1].set_title('Real Y')
         ax[1].axis('off')
         
-        im2 = ax[2].imshow(fake_Y[0, 0, :, :], cmap='gray')
+        im2 = ax[2].imshow(fake_Y[0, 0, :, :], cmap='gray', clim=vlim_GT)
         ax[2].set_title('Fake Y')
         ax[2].axis('off')
         
