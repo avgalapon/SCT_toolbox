@@ -15,7 +15,7 @@ import SimpleITK as sitk
 from utils import modify_json, return_to_HU_cGAN, return_to_HU_cycleGAN
 
 
-json_path = fr"/home/galaponav/art/scripts/PhD/SCT_toolbox/tp_test.json"
+json_path = fr"/home/galaponav/art/scripts/PhD/SCT_toolbox/config_files/tp_test.json"
 datapath = fr'/data/galaponav/dataset/newHN_CBCT_test'
 
 
@@ -53,7 +53,7 @@ for TLtype in TLtype_list:
                 modify_json(json_path, 'fname', fname)
                 modify_json(json_path, 'model_type', model)
                 
-                cmd = f"python /home/galaponav/art/scripts/PhD/SCT_toolbox/CTsynthesizer_nrrd.py {json_path}"
+                cmd = f"python /home/galaponav/art/scripts/PhD/SCT_toolbox/CTsynthesizer.py {json_path}"
                 os.system(cmd)
                 print(f"{patient} sCT generated")
                 
@@ -73,7 +73,3 @@ for TLtype in TLtype_list:
                 sct_img.CopyInformation(sct)
                 sitk.WriteImage(sct_img, sct_path)
                 print(f"{patient} sCT unnormalized")
-
-
-
-
