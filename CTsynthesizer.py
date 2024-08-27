@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 def run_inference(cfg, num_inf):
     try:
-        prepare_data = prepare_data_class.prepare_dataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd') 
+        prepare_data = prepare_data_class.PrepareDataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd') 
         model, device = model_class.Model(cfg).initialize_models()
         dataloader = prepare_data.create_dataset()
         sct_gen = Generate_sCT(cfg, model, dataloader, device)
@@ -132,7 +132,7 @@ def main():
     try:
         cfg = Config(args.json_parameters_path)
 
-        prepare_data = prepare_data_class.prepare_dataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd')
+        prepare_data = prepare_data_class.PrepareDataset(cfg, reference_MR='/data/galaponav/dataset/newHN_MR2/p0024/MRI_registered_bcorr_axial.nrrd')
         prepare_data.run_sitk(1, 1, DIR=cfg.DIR, eval=cfg.EVAL)
 
         Preprocess.Preprocessor(cfg).preprocess()

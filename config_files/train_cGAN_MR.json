@@ -14,7 +14,7 @@
     "orientation": "axial",
     "model_type": "cGAN",
     "dropout_enable": true,
-    "dropout_rate": 0.1,
+    "dropout_rate": 0.5,
     "device": 1,
     "DIR": false,
     "EVAL": false,

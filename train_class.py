@@ -12,6 +12,7 @@
 
 import torch
 import random
+import logging
 import itertools
 import numpy as np
 from tqdm import tqdm
@@ -27,27 +28,44 @@ class Train:
         self.train_dataloader = train_dataloader
         self.valid_dataloader = valid_dataloader
         self.plot = plot
+        
+        logging.basicConfig(
+            filename=f'train_{self.config.model_type}.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        self.logger = logging.getLogger(__name__)
 
     def train_DCNN(self):
-        model = self.model['DCNN']
-        
-        optimizer = torch.optim.SGD(model.parameters(), lr=self.config.learning_rate, weight_decay=self.config.lambda_decay, momentum=0.9, nesterov=True)
-        lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
-        
-        train_loss, val_loss = {}, {}
-        best_loss = np.inf
-
-        for epoch in range(self.config.epoch):
-            model.train()
-            train_loss[epoch] = self.run_epoch_DCNN(model, self.loss, optimizer, epoch)
-            val_loss[epoch] = self.validate_DCNN(model, self.loss, epoch)
-
-            lr_scheduler.step()
+        try:
+            self.logger.info("Training DCNN model...")
+            model = self.model['DCNN']
             
-            best_loss = self.save_best_model_DCNN(model, epoch, val_loss[epoch], best_loss)
-            self.save_losses('DCNN', train_loss, val_loss)            
+            optimizer = torch.optim.SGD(model.parameters(), lr=self.config.learning_rate, weight_decay=self.config.lambda_decay, momentum=0.9, nesterov=True)
+            lr_scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
             
-        print("Training complete!")            
+            train_loss, val_loss = {}, {}
+            best_loss = np.inf
+
+            for epoch in range(self.config.epoch):
+                model.train()
+                train_loss[epoch] = self.run_epoch_DCNN(model, self.loss, optimizer, epoch)
+                val_loss[epoch] = self.validate_DCNN(model, self.loss, epoch)
+                self.logger.info(f"Epoch: {epoch} | Training Loss: {train_loss[epoch]} | Validation Loss: {val_loss[epoch]}")
+                
+                lr_scheduler.step()
+                
+                # best_loss = self.save_best_model_DCNN(model, epoch, val_loss[epoch], best_loss)
+                best_loss = self.save_best_model(models=[model],
+                                                 epoch=epoch, 
+                                                 current_loss=val_loss[epoch], 
+                                                 best_loss=best_loss,
+                                                 model_identifiers=["cycleGAN_A2B", "cycleGAN_B2A", "cycleGAN_DA", "cycleGAN_DB"])
+                
+            self.save_losses('DCNN', train_loss, val_loss)     
+            print("Training complete!")            
+        except Exception as e:
+            self.logger.error(f"Error during training: {e}")
+            raise
     
     def run_epoch_DCNN(self, model, loss_fn, optimizer, epoch):
         losses = []
@@ -72,7 +90,7 @@ class Train:
                 self.plot_images(real_X, real_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_training_{plot_count}.png")
             
             running_mean = np.mean(losses)
-            pbar.set_description(f"Training Loss: {running_mean}")
+            pbar.set_description(f"Epoch:{epoch} | Training Loss: {running_mean}")
 
         return running_mean
     
@@ -95,49 +113,64 @@ class Train:
                         self.plot_images(val_X, val_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_validation_{plot_count}.png")
                         
                 running_mean = np.mean(losses)
-                pbar_val.set_description(f"Validation Loss: {running_mean}")
+                pbar_val.set_description(f"Epoch:{epoch} | Validation Loss: {running_mean}")
 
         return running_mean
 
-    def save_best_model_DCNN(self, model, epoch, current_loss, best_loss):
-        if current_loss < best_loss and epoch > 1:
-            best_loss = current_loss
-            torch.save(model.state_dict(), f"{self.config.weights_path}/DCNN_weights_best.pth")
-            with open(f"{self.config.weights_path}/best_loss_epoch.txt", "w") as f:
-                f.write(f"Best loss epoch: {epoch} | loss: {best_loss}")
-        return best_loss
+    # def save_best_model_DCNN(self, model, epoch, current_loss, best_loss):
+    #     if current_loss < best_loss and epoch > 1:
+    #         best_loss = current_loss
+    #         torch.save(model.state_dict(), f"{self.config.weights_path}/DCNN_weights_best.pth")
+    #         with open(f"{self.config.weights_path}/best_loss_epoch.txt", "w") as f:
+    #             f.write(f"Best loss epoch: {epoch} | loss: {best_loss}")
+    #     return best_loss
 
     def train_cycleGAN(self):
-        model_A2B, model_B2A = self.model['cycleGAN_A2B'], self.model['cycleGAN_B2A']
-        model_DA, model_DB = self.model['cycleGAN_DA'], self.model['cycleGAN_DB']
-        loss_cycleGAN, loss_MAE = self.loss
+        try:
+            
+            self.logger.info("Training cycleGAN model...")
+            model_A2B, model_B2A = self.model['cycleGAN_A2B'], self.model['cycleGAN_B2A']
+            model_DA, model_DB = self.model['cycleGAN_DA'], self.model['cycleGAN_DB']
+            loss_cycleGAN, loss_MAE = self.loss
 
-        optimizer_G = torch.optim.Adam(itertools.chain(model_A2B.parameters(), model_B2A.parameters()), lr=self.learning_rate, betas=(0.5, 0.999))
-        optimizer_D = torch.optim.Adam(itertools.chain(model_DA.parameters(), model_DB.parameters()), lr=self.learning_rate, betas=(0.5, 0.999))
-        lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=DecayLR(self.epoch, 0, self.decay_epoch).step)
-        lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=DecayLR(self.epoch, 0, self.decay_epoch).step)
+            optimizer_G = torch.optim.Adam(itertools.chain(model_A2B.parameters(), model_B2A.parameters()), lr=self.learning_rate, betas=(0.5, 0.999))
+            optimizer_D = torch.optim.Adam(itertools.chain(model_DA.parameters(), model_DB.parameters()), lr=self.learning_rate, betas=(0.5, 0.999))
+            lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=DecayLR(self.epoch, 0, self.decay_epoch).step)
+            lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=DecayLR(self.epoch, 0, self.decay_epoch).step)
 
-        train_loss, val_loss = {}, {}
-        best_loss = np.inf
+            train_loss, val_loss = {}, {}
+            best_loss = np.inf
 
-        for epoch in range(self.config.epoch):
-            model_A2B.train()
-            model_B2A.train()
-            train_loss[epoch] = self.run_epoch_cycleGAN(model_A2B, model_B2A, model_DA, model_DB, loss_cycleGAN, optimizer_G, optimizer_D, epoch)
-            val_loss[epoch] = self.validate_cycleGAN(model_A2B, loss_MAE, epoch)
+            for epoch in range(self.config.epoch):
+                model_A2B.train()
+                model_B2A.train()
+                train_loss[epoch] = self.run_epoch_cycleGAN(model_A2B, model_B2A, model_DA, model_DB, loss_cycleGAN, optimizer_G, optimizer_D, epoch)
+                val_loss[epoch] = self.validate_cycleGAN(model_A2B, loss_MAE, epoch)
+                self.logger.info(f"Epoch: {epoch} | Training Loss: {train_loss[epoch]} | Validation Loss: {val_loss[epoch]}")
 
-            lr_scheduler_G.step()
-            lr_scheduler_D.step()
-            best_loss = self.save_best_model_cycleGAN(model_A2B, model_B2A, model_DA, model_DB, epoch, val_loss[epoch], best_loss)
+                lr_scheduler_G.step()
+                lr_scheduler_D.step()
+                # best_loss = self.save_best_model_cycleGAN(model_A2B, model_B2A, model_DA, model_DB, epoch, val_loss[epoch], best_loss)
+                best_loss = self.save_best_model(models=[model_A2B, model_B2A, model_DA, model_DB],
+                                                 epoch=epoch, 
+                                                 current_loss=val_loss[epoch], 
+                                                 best_loss=best_loss,
+                                                 model_identifiers=["cycleGAN_A2B", "cycleGAN_B2A", "cycleGAN_DA", "cycleGAN_DB"])
 
-        self.save_losses('cycleGAN', train_loss, val_loss)
+            self.save_losses('cycleGAN', train_loss, val_loss)
+            print("Training complete!")
+        
+        except Exception as e:
+            self.logger.error(f"Error during training: {e}")
+            raise
     
     def run_epoch_cycleGAN(self, model_A2B, model_B2A, model_DA, model_DB, loss_cycleGAN, optimizer_G, optimizer_D, epoch):
         loss_G, loss_DA, loss_DB = [], [], []
         plot_count = 0
         max_plots = 20
+        pbar = tqdm(self.train_dataloader, desc="Training")
 
-        for data in tqdm(self.train_dataloader, desc="Training"):
+        for data in pbar:
             real_X, real_Y = data['A'].to(self.device), data['B'].to(self.device)
 
             fake_X = model_B2A(real_Y)
@@ -163,6 +196,8 @@ class Train:
             loss_DA.append(lossDA.item())
             loss_DB.append(lossDB.item())
             
+            pbar.set_description(f"Epoch: {epoch} | Training Loss G: {np.mean(loss_G)} | Training Loss DA: {np.mean(loss_DA)} | Training Loss DB: {np.mean(loss_DB)}")
+            
             if self.plot and plot_count < max_plots and random.random() < 0.3:
                 plot_count += 1
                 self.plot_images(real_X, real_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_training_{plot_count}.png")
@@ -176,7 +211,8 @@ class Train:
         max_plots = 20
 
         with torch.no_grad():
-            for data in tqdm(self.valid_dataloader, desc="Validation"):
+            pbar = tqdm(self.valid_dataloader, desc="Validation")
+            for data in pbar:
                 val_X, val_Y = data['A'].to(self.device), data['B'].to(self.device)
                 fake_Y = model_A2B(val_X)
                 loss = loss_MAE(val_Y, fake_Y)
@@ -185,43 +221,57 @@ class Train:
                 if self.plot and plot_count < max_plots and random.random() < 0.3:
                         plot_count += 1
                         self.plot_images(val_X, val_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_validation_{plot_count}.png")
+                        
+                pbar.set_description(f"Epoch: {epoch} | Validation Loss: {np.mean(losses)}")
 
         return np.mean(losses)
 
-    def save_best_model_cycleGAN(self, model_A2B, model_B2A, model_DA, model_DB, epoch, current_loss, best_loss):
-        if current_loss < best_loss and epoch > 1:
-            best_loss = current_loss
-            torch.save(model_A2B.state_dict(), f"{self.config.weights_path}/cycleGAN_A2B_weights_best.pth")
-            torch.save(model_B2A.state_dict(), f"{self.config.weights_path}/cycleGAN_B2A_weights_best.pth")
-            torch.save(model_DA.state_dict(), f"{self.config.weights_path}/cycleGAN_DA_weights_best.pth")
-            torch.save(model_DB.state_dict(), f"{self.config.weights_path}/cycleGAN_DB_weights_best.pth")
-            with open(f"{self.config.weights_path}/best_loss_epoch.txt", "w") as f:
-                f.write(f"Best loss epoch: {epoch} | loss: {best_loss}")
-        return best_loss
+    # def save_best_model_cycleGAN(self, model_A2B, model_B2A, model_DA, model_DB, epoch, current_loss, best_loss):
+    #     if current_loss < best_loss and epoch > 1:
+    #         best_loss = current_loss
+    #         torch.save(model_A2B.state_dict(), f"{self.config.weights_path}/cycleGAN_A2B_weights_best.pth")
+    #         torch.save(model_B2A.state_dict(), f"{self.config.weights_path}/cycleGAN_B2A_weights_best.pth")
+    #         torch.save(model_DA.state_dict(), f"{self.config.weights_path}/cycleGAN_DA_weights_best.pth")
+    #         torch.save(model_DB.state_dict(), f"{self.config.weights_path}/cycleGAN_DB_weights_best.pth")
+    #         with open(f"{self.config.weights_path}/best_loss_epoch.txt", "w") as f:
+    #             f.write(f"Best loss epoch: {epoch} | loss: {best_loss}")
+    #     return best_loss
 
     def train_cGAN(self):
-        model_G, model_D = self.model['cGAN_G'], self.model['cGAN_D']
-        loss_laplacian, loss_cGAN, loss_MAE = self.loss
+        try:
+            self.logger.info("Training cGAN model...")
+            model_G, model_D = self.model['cGAN_G'], self.model['cGAN_D']
+            loss_laplacian, loss_cGAN, loss_MAE = self.loss
 
-        optimizer_G = torch.optim.Adam(model_G.parameters(), lr=self.config.learning_rate, betas=(0.5, 0.999))
-        optimizer_D = torch.optim.Adam(model_D.parameters(), lr=self.config.learning_rate, betas=(0.5, 0.999))
-        lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
-        lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
+            optimizer_G = torch.optim.Adam(model_G.parameters(), lr=self.config.learning_rate, betas=(0.5, 0.999))
+            optimizer_D = torch.optim.Adam(model_D.parameters(), lr=self.config.learning_rate, betas=(0.5, 0.999))
+            lr_scheduler_G = torch.optim.lr_scheduler.LambdaLR(optimizer_G, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
+            lr_scheduler_D = torch.optim.lr_scheduler.LambdaLR(optimizer_D, lr_lambda=DecayLR(self.config.epoch, 0, self.config.decay_epoch).step)
 
-        train_loss, val_loss = {}, {}
-        best_loss = np.inf
+            train_loss, val_loss = {}, {}
+            best_loss = np.inf
 
-        for epoch in range(self.config.epoch):
-            model_G.train()
-            model_D.train()
-            train_loss[epoch] = self.run_epoch_cGAN(model_G, model_D, loss_laplacian, loss_cGAN, optimizer_G, optimizer_D, epoch)
-            val_loss[epoch] = self.validate_cGAN(model_G, loss_MAE, epoch)
+            for epoch in range(self.config.epoch):
+                model_G.train()
+                model_D.train()
+                train_loss[epoch] = self.run_epoch_cGAN(model_G, model_D, loss_laplacian, loss_cGAN, optimizer_G, optimizer_D, epoch)
+                val_loss[epoch] = self.validate_cGAN(model_G, loss_MAE, epoch)
+                self.logger.info(f"Epoch: {epoch} | Training Loss: {train_loss[epoch]} | Validation Loss: {val_loss[epoch]}")
 
-            lr_scheduler_G.step()
-            lr_scheduler_D.step()
-            best_loss = self.save_best_model_cGAN(model_G, model_D, epoch, val_loss[epoch], best_loss)
+                lr_scheduler_G.step()
+                lr_scheduler_D.step()
+                #best_loss = self.save_best_model_cGAN(model_G, model_D, epoch, val_loss[epoch], best_loss)
+                best_loss = self.save_best_model(models=[model_G, model_D],
+                                                 epoch=epoch, 
+                                                 current_loss=val_loss[epoch], 
+                                                 best_loss=best_loss,
+                                                 model_identifiers=["cGAN_G", "cGAN_D"])
 
-        self.save_losses('cGAN', train_loss, val_loss)
+            self.save_losses('cGAN', train_loss, val_loss)
+            
+        except Exception as e:
+            self.logger.error(f"Error during training: {e}")
+            raise
     
     def run_epoch_cGAN(self, model_G, model_D, loss_laplacian, loss_cGAN, optimizer_G, optimizer_D, epoch):
         loss_G, loss_D = [], []
@@ -253,7 +303,7 @@ class Train:
             running_mean_G = np.mean(loss_G)
             running_mean_D = np.mean(loss_D)
             
-            pbar.set_description(f"Training Loss G: {running_mean_G} | Training Loss D: {running_mean_D}")
+            pbar.set_description(f"Epoch: {epoch} | Training Loss G: {running_mean_G} | Training Loss D: {running_mean_D}")
 
         return [running_mean_G, running_mean_D]
     
@@ -276,17 +326,39 @@ class Train:
                     self.plot_images(val_X, val_Y, fake_Y, save_path=f"{self.config.weights_path}/epoch_{epoch}_validation_{plot_count}.png")
                     
                 running_mean = np.mean(losses)
-                pbar.set_description(f"Validation Loss: {running_mean}")
+                pbar.set_description(f"Epoch: {epoch} | Validation Loss: {running_mean}")
 
         return running_mean
 
-    def save_best_model_cGAN(self, model_G, model_D, epoch, current_loss, best_loss):
+    # def save_best_model_cGAN(self, model_G, model_D, epoch, current_loss, best_loss):
+    #     if current_loss < best_loss and epoch > 1:
+    #         best_loss = current_loss
+    #         torch.save(model_G.state_dict(), f"{self.config.weights_path}/cGAN_G_weights_best.pth")
+    #         torch.save(model_D.state_dict(), f"{self.config.weights_path}/cGAN_D_weights_best.pth")
+    #         with open(f"{self.config.weights_path}/best_loss_epoch.txt", "a") as f:
+    #             f.write(f"Best loss epoch: {epoch} | loss: {best_loss}")
+    #     return best_loss
+    
+    def save_best_model(self, models, epoch, current_loss, best_loss, model_identifiers):
+        """
+        Generic function to save the best model(s) based on the current loss.
+        
+        :param models: A dictionary or list of model objects to save.
+        :param epoch: Current epoch number.
+        :param current_loss: Current loss to compare against the best loss.
+        :param best_loss: The best loss value so far.
+        :param model_identifiers: A list of strings to identify each model's save file name.
+        :return: Updated best loss value.
+        """
         if current_loss < best_loss and epoch > 1:
             best_loss = current_loss
-            torch.save(model_G.state_dict(), f"{self.config.weights_path}/cGAN_G_weights_best.pth")
-            torch.save(model_D.state_dict(), f"{self.config.weights_path}/cGAN_D_weights_best.pth")
+            
+            for model, identifier in zip(models, model_identifiers):
+                torch.save(model.state_dict(), f"{self.config.weights_path}/{identifier}_weights_best.pth")
+            
             with open(f"{self.config.weights_path}/best_loss_epoch.txt", "w") as f:
                 f.write(f"Best loss epoch: {epoch} | loss: {best_loss}")
+    
         return best_loss
 
     def save_losses(self, model_name, train_loss, val_loss):

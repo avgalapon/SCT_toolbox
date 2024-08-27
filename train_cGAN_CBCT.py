@@ -21,7 +21,7 @@ import train_class
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
-json_path = fr"{current_dir}/config_files/train_cGAN_MR.json"
+json_path = fr"{current_dir}/config_files/train_cGAN_CBCT.json"
 config = Config(json_path)
 
 patient_list = sorted(os.listdir(config.data_path))

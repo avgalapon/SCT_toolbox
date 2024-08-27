@@ -58,8 +58,6 @@ class ImageDataset(Dataset):
     def normalizeMR(self,slice):
         return (slice-self.MR_min)/(self.MR_max-self.MR_min)
     
-    
-    
 # --------------------------------------------------------------------------------------------#
     
 class ImageDataset_train(Dataset):

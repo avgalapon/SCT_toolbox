@@ -53,4 +53,7 @@ def return_to_HU_cycleGAN(normX, max_X=3000.0, min_X=-1024.0):
     return X
 
 def return_to_HU_cGAN(normX, CT_max=3000.0, CT_min=-1024.0):
-    return ((normX + 1) / 2) * (CT_max - CT_min) + CT_min
+    #((normX + 1) / 2) * (CT_max - CT_min) + CT_min
+    minmax = CT_max - CT_min
+    X = (normX*minmax) + CT_min
+    return X

@@ -378,8 +378,8 @@ class ResnetGenerator(nn.Module):
     def forward(self, input):
         """Standard forward"""
         x = self.model(input)
-        output = F.tanh(self.output_layer(x))
-        std_output = F.tanh(self.std_layer(x))
+        output = F.sigmoid(self.output_layer(x))
+        std_output = F.sigmoid(self.std_layer(x))
         # output = self.output_layer(x)
         # std_output = self.std_layer(x)
         return output,std_output

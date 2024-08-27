@@ -12,7 +12,7 @@ import os
 import itk
 import SimpleITK as sitk
 import pre_process_tools
-from torch.utils.data import DataLoader
+import torch.utils.data
 from ImageDataset import ImageDataset, ImageDataset_train
 
 class PrepareDataset:
@@ -32,6 +32,7 @@ class PrepareDataset:
     def run_sitk(self, topslice, bottomslice, DIR=False, eval=True):
         input_nrrd = self._convert_dicom_to_nifti(self.config.input_path, self.img_type)
         mask = self._segment_image(input_nrrd)
+        input_masked = self._apply_mask(input_nrrd, mask, self.img_type)
         
         if eval:
             GT_nrrd = self._convert_dicom_to_nifti(self.config.groundtruth_path, 'GT')
@@ -53,7 +54,7 @@ class PrepareDataset:
         print("Preprocessing completed.")
 
     def create_dataloader(self, dataset, batch_size=1, shuffle=False):
-        return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0)
+        return torch.utils.data.DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, pin_memory=True, num_workers=0)
 
     def create_dataset(self):
         print("Creating dataset...")
@@ -71,16 +72,6 @@ class PrepareDataset:
         print('Total Train slices:', len(train_dataloader))
         print('Total Val slices:', len(val_dataloader))
         return train_dataloader, val_dataloader
-    
-    # def create_train_dataset(self):
-    #     normalize = (self.config.model_type != 'DCNN')
-    #     train_dataset = ImageDataset_train(self.config, train_data=True, normalize=normalize, augmentation=True)
-    #     val_dataset = ImageDataset_train(self.config, train_data=False, normalize=normalize, augmentation=False)
-    #     train_dataloader = DataLoader(train_dataset, batch_size=1, shuffle=True, pin_memory=True,num_workers=0)
-    #     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=True, pin_memory=True,num_workers=0)
-    #     print('Total Train slices: ',len(train_dataloader))
-    #     print('Total Val slices: ',len(val_dataloader))
-    #     return train_dataloader, val_dataloader
 
     def remove_tb_slices(self, numslice_top, numslice_bottom, img_type='CBCT'):
         img_path = os.path.join(self.config.output_path, f'{img_type}.nrrd')
