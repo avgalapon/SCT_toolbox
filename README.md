@@ -1,4 +1,6 @@
-Synthetic CT Toolbox
+Synthetic CT Toolbox v0.05
 Status: WIP
 
-Documentation to follow
+Warning:Some bugs may be present
+
+Documentation to follow. 
