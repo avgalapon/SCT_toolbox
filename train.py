@@ -23,7 +23,7 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 json_path = fr"{current_dir}/config_files/train.json"
 config = Config(json_path)
 
-patient_list = sorted(os.listdir(config.data_path))
+patient_list = sorted(os.listdir(config.data_path))[:3]
 print(patient_list)
 
 train_data, val_data = train_test_split(patient_list, test_size=0.3, random_state=42)

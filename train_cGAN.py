@@ -43,4 +43,4 @@ train_dataloader, valid_dataloader = prepare_data.create_train_dataset()
 model, device = model_class.Model(config).intialize_training_models()
 loss = losses.define_loss(config)
 
-train_class.Train(config, model, device, loss, train_dataloader, valid_dataloader, plot=True).train_cGAN()
+train_class.Train(config, model, device, loss, train_dataloader, valid_dataloader, plot=True).train_DCNN()
